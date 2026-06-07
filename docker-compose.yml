@@ -1,0 +1,6 @@
+services:
+  bookstack-bot:
+    build: .
+    image: bookstack-bot:latest
+    env_file: .env
+    restart: unless-stopped
