@@ -1,4 +1,5 @@
 import logging
+import os
 
 import discord
 from discord import app_commands
@@ -15,6 +16,12 @@ from bot.utils.formatting import (
 
 log = logging.getLogger("bookstack-bot.wiki")
 
+ALLOWED_CHANNEL_ID = int(os.getenv("ALLOWED_CHANNEL_ID", "0"))
+
+
+def in_allowed_channel(interaction: discord.Interaction) -> bool:
+    return ALLOWED_CHANNEL_ID == 0 or interaction.channel_id == ALLOWED_CHANNEL_ID
+
 
 class Wiki(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -26,6 +33,11 @@ class Wiki(commands.Cog):
     @wiki.command(name="search", description="Search BookStack content")
     @app_commands.describe(query="What to search for")
     async def search(self, interaction: discord.Interaction, query: str):
+        if not in_allowed_channel(interaction):
+            await interaction.response.send_message(
+                "Wiki commands only work in <#1512685812288978945>.", ephemeral=True
+            )
+            return
         await interaction.response.defer()
         try:
             results = await self.bs.search(query)
@@ -39,6 +51,11 @@ class Wiki(commands.Cog):
     @wiki.command(name="page", description="Get a page by ID")
     @app_commands.describe(page_id="Numeric page ID")
     async def page(self, interaction: discord.Interaction, page_id: int):
+        if not in_allowed_channel(interaction):
+            await interaction.response.send_message(
+                "Wiki commands only work in <#1512685812288978945>.", ephemeral=True
+            )
+            return
         await interaction.response.defer()
         try:
             page = await self.bs.get_page(page_id)
@@ -62,6 +79,11 @@ class Wiki(commands.Cog):
         title: str,
         content: str = "",
     ):
+        if not in_allowed_channel(interaction):
+            await interaction.response.send_message(
+                "Wiki commands only work in <#1512685812288978945>.", ephemeral=True
+            )
+            return
         await interaction.response.defer()
         try:
             page = await self.bs.create_page(book_id, title, content)
@@ -79,6 +101,11 @@ class Wiki(commands.Cog):
         app_commands.Choice(name="shelves", value="shelves"),
     ])
     async def list_items(self, interaction: discord.Interaction, kind: str = "books"):
+        if not in_allowed_channel(interaction):
+            await interaction.response.send_message(
+                "Wiki commands only work in <#1512685812288978945>.", ephemeral=True
+            )
+            return
         await interaction.response.defer()
         try:
             if kind == "shelves":
