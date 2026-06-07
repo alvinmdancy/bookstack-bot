@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bookstack-bot
+  labels:
+    app: bookstack-bot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bookstack-bot
+  template:
+    metadata:
+      labels:
+        app: bookstack-bot
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+        - name: bot
+          image: bookstack-bot:local
+          imagePullPolicy: Never
+          envFrom:
+            - secretRef:
+                name: bookstack-bot-secret
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
