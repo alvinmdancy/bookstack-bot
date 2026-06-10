@@ -14,59 +14,65 @@ from bot.utils.formatting import (
     build_shelves_embed,
 )
 
-log = logging.getLogger("bookstack-bot.wiki")
+log = logging.getLogger("bookstack-bot.bookstack")
 
-ALLOWED_CHANNEL_ID = int(os.getenv("ALLOWED_CHANNEL_ID", "0"))
+ALLOWED_CHANNEL_ID = [int(cid.strip()) for cid in os.getenv("ALLOWED_CHANNEL_ID", "0").split(",")]
 
 
 def in_allowed_channel(interaction: discord.Interaction) -> bool:
-    return ALLOWED_CHANNEL_ID == 0 or interaction.channel_id == ALLOWED_CHANNEL_ID
+    return ALLOWED_CHANNEL_ID == [0] or interaction.channel_id in ALLOWED_CHANNEL_ID
 
 
-class Wiki(commands.Cog):
+class bookstack(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.bs = BookStackClient()
 
-    wiki = app_commands.Group(name="wiki", description="Interact with BookStack")
+    bookstack = app_commands.Group(name="bookstack", description="Interact with BookStack")
 
-    @wiki.command(name="search", description="Search BookStack content")
+    @bookstack.command(name="search", description="Search BookStack content")
     @app_commands.describe(query="What to search for")
     async def search(self, interaction: discord.Interaction, query: str):
         if not in_allowed_channel(interaction):
             await interaction.response.send_message(
-                "Wiki commands only work in <#1512685812288978945>.", ephemeral=True
+                "Bookstack commands only work in <#1512685812288978945>.", ephemeral=True, delete_after=3
             )
             return
-        await interaction.response.defer()
+        try:
+            await interaction.response.defer()
+        except discord.errors.NotFound:
+            return
         try:
             results = await self.bs.search(query)
             await interaction.followup.send(embed=build_search_embed(results, query))
         except BookStackError as e:
-            await interaction.followup.send(f"BookStack error: {e}", ephemeral=True)
+            await interaction.followup.send(f"BookStack error: {e}", ephemeral=True, delete_after=3)
         except Exception as e:
-            log.exception("Unexpected error in /wiki search")
-            await interaction.followup.send(f"Unexpected error: {e}", ephemeral=True)
+            log.exception("Unexpected error in /bookstack search")
+            await interaction.followup.send(f"Unexpected error: {e}", ephemeral=True, delete_after=3)
 
-    @wiki.command(name="page", description="Get a page by ID")
+    @bookstack.command(name="page", description="Get a page by ID")
     @app_commands.describe(page_id="Numeric page ID")
     async def page(self, interaction: discord.Interaction, page_id: int):
         if not in_allowed_channel(interaction):
             await interaction.response.send_message(
-                "Wiki commands only work in <#1512685812288978945>.", ephemeral=True
+                "Bookstack commands only work in <#1512685812288978945>.", ephemeral=True, delete_after=3
             )
             return
-        await interaction.response.defer()
+        try:
+            await interaction.response.defer()
+        except discord.errors.NotFound:
+            return
         try:
             page = await self.bs.get_page(page_id)
             await interaction.followup.send(embed=build_page_embed(page))
         except BookStackError as e:
-            await interaction.followup.send(f"BookStack error: {e}", ephemeral=True)
+            await interaction.followup.send(f"BookStack error: {e}", ephemeral=True, delete_after=3)
         except Exception as e:
-            log.exception("Unexpected error in /wiki page")
-            await interaction.followup.send(f"Unexpected error: {e}", ephemeral=True)
+            log.exception("Unexpected error in /bookstack page")
+            await interaction.followup.send(f"Unexpected error: {e}", ephemeral=True, delete_after=3)
 
-    @wiki.command(name="create", description="Create a page stub in a book")
+    @bookstack.command(name="create", description="Create a page stub in a book")
     @app_commands.describe(
         book_id="Book ID to add the page to",
         title="Page title",
@@ -81,20 +87,23 @@ class Wiki(commands.Cog):
     ):
         if not in_allowed_channel(interaction):
             await interaction.response.send_message(
-                "Wiki commands only work in <#1512685812288978945>.", ephemeral=True
+                "Bookstack commands only work in <#1512685812288978945>.", ephemeral=True, delete_after=3
             )
             return
-        await interaction.response.defer()
+        try:
+            await interaction.response.defer()
+        except discord.errors.NotFound:
+            return
         try:
             page = await self.bs.create_page(book_id, title, content)
             await interaction.followup.send(embed=build_created_embed(page, book_id))
         except BookStackError as e:
-            await interaction.followup.send(f"BookStack error: {e}", ephemeral=True)
+            await interaction.followup.send(f"BookStack error: {e}", ephemeral=True, delete_after=3)
         except Exception as e:
-            log.exception("Unexpected error in /wiki create")
-            await interaction.followup.send(f"Unexpected error: {e}", ephemeral=True)
+            log.exception("Unexpected error in /bookstack create")
+            await interaction.followup.send(f"Unexpected error: {e}", ephemeral=True, delete_after=3)
 
-    @wiki.command(name="list", description="List books or shelves")
+    @bookstack.command(name="list", description="List books or shelves")
     @app_commands.describe(kind="What to list")
     @app_commands.choices(kind=[
         app_commands.Choice(name="books", value="books"),
@@ -103,10 +112,13 @@ class Wiki(commands.Cog):
     async def list_items(self, interaction: discord.Interaction, kind: str = "books"):
         if not in_allowed_channel(interaction):
             await interaction.response.send_message(
-                "Wiki commands only work in <#1512685812288978945>.", ephemeral=True
+                "Bookstack commands only work in <#1512685812288978945>.", ephemeral=True, delete_after=3
             )
             return
-        await interaction.response.defer()
+        try:
+            await interaction.response.defer()
+        except discord.errors.NotFound:
+            return
         try:
             if kind == "shelves":
                 data = await self.bs.list_shelves()
@@ -116,11 +128,11 @@ class Wiki(commands.Cog):
                 embed = build_books_embed(data)
             await interaction.followup.send(embed=embed)
         except BookStackError as e:
-            await interaction.followup.send(f"BookStack error: {e}", ephemeral=True)
+            await interaction.followup.send(f"BookStack error: {e}", ephemeral=True, delete_after=3)
         except Exception as e:
             log.exception("Unexpected error in /wiki list")
-            await interaction.followup.send(f"Unexpected error: {e}", ephemeral=True)
+            await interaction.followup.send(f"Unexpected error: {e}", ephemeral=True, delete_after=3)
 
 
 async def setup(bot: commands.Bot):
-    await bot.add_cog(Wiki(bot))
+    await bot.add_cog(bookstack(bot))
