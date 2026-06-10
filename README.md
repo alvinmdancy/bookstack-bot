@@ -10,41 +10,41 @@ Built with Python, discord.py, Docker, and Kubernetes.
 
 | Command | Description |
 |---|---|
-| `/wiki search <query>` | Search all BookStack content |
-| `/wiki page <id>` | Get a page by ID |
-| `/wiki create <book_id> <title> [content]` | Create a page stub in a book |
-| `/wiki list books` | List all books |
-| `/wiki list shelves` | List all shelves |
+| `/bookstack search <query>` | Search all BookStack content |
+| `/bookstack page <id>` | Get a page by ID |
+| `/bookstack create <book_id> <title> [content]` | Create a page stub in a book |
+| `/bookstack list books` | List all books |
+| `/bookstack list shelves` | List all shelves |
 
 ### Examples
 
 **Search for content:**
 ```
-/wiki search docker networking
+/bookstack search docker networking
 ```
 Returns up to 5 results across pages, chapters, and books with a preview and a link to each.
 
 **Get a specific page:**
 ```
-/wiki page 42
+/bookstack page 42
 ```
 Returns the page title, content preview, book slug, and a link to open it in BookStack.
 
 **Create a page stub:**
 ```
-/wiki create 3 "Kubernetes Cheatsheet"
+/bookstack create 3 "Kubernetes Cheatsheet"
 ```
 Creates a blank page titled "Kubernetes Cheatsheet" inside book ID 3. You can pass optional markdown content as a third argument.
 
 **List your books:**
 ```
-/wiki list books
+/bookstack list books
 ```
-Returns a list of all books with their IDs — useful for finding the book ID before running `/wiki create`.
+Returns a list of all books with their IDs — useful for finding the book ID before running `/bookstack create`.
 
 **List your shelves:**
 ```
-/wiki list shelves
+/bookstack list shelves
 ```
 Returns all shelves with their IDs.
 
