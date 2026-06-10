@@ -73,3 +73,18 @@ class BookStackClient:
                 "markdown": markdown or f"# {title}\n\n_Stub created via Discord._",
             },
         )
+    
+    async def get_shelf(self, shelf_id: int) -> dict:
+        return await self._get(f"/shelves/{shelf_id}")
+
+    async def export_book_pdf(self, book_id: int) -> bytes:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            r = await client.get(
+                f"{self.base_url}/api/books/{book_id}/export/pdf",
+                headers=self._headers,
+            )
+            if r.status_code >= 400:
+                raise BookStackError(
+                    f"BookStack returned {r.status_code}: {r.text}"
+                )
+            return r.content

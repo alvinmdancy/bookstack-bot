@@ -1,6 +1,6 @@
 # bookstack-bot
 
-A Discord bot that connects to your [BookStack](https://www.bookstackapp.com/) wiki. Use slash commands in Discord to search pages, look up content, create stubs, and browse your books and shelves.
+A Discord bot that connects to your [BookStack](https://www.bookstackapp.com/) wiki. Use slash commands in Discord to search pages, look up content, create stubs, browse your books and shelves, and export books as PDFs.
 
 Built with Python, discord.py, Docker, and Kubernetes.
 
@@ -15,38 +15,39 @@ Built with Python, discord.py, Docker, and Kubernetes.
 | `/bookstack create <book_id> <title> [content]` | Create a page stub in a book |
 | `/bookstack list books` | List all books |
 | `/bookstack list shelves` | List all shelves |
+| `/bookstack export` | Export a book as a PDF |
 
 ### Examples
 
 **Search for content:**
-```
 /bookstack search docker networking
-```
-Returns up to 5 results across pages, chapters, and books with a preview and a link to each.
+Returns up to 5 results across pages, chapters, and books with a link to each.
 
 **Get a specific page:**
-```
 /bookstack page 42
-```
 Returns the page title, content preview, book slug, and a link to open it in BookStack.
 
 **Create a page stub:**
-```
 /bookstack create 3 "Kubernetes Cheatsheet"
-```
-Creates a blank page titled "Kubernetes Cheatsheet" inside book ID 3. You can pass optional markdown content as a third argument.
+Creates a blank page titled "Kubernetes Cheatsheet" inside book ID 3. Pass optional markdown content as a third argument.
 
 **List your books:**
-```
 /bookstack list books
-```
-Returns a list of all books with their IDs — useful for finding the book ID before running `/bookstack create`.
+Returns all books with their IDs — useful before running `/bookstack create`.
 
 **List your shelves:**
-```
 /bookstack list shelves
-```
 Returns all shelves with their IDs.
+
+**Export a book as PDF:**
+/bookstack export
+Opens a shelf picker, then a book picker. The bot exports the selected book and sends the PDF as a file attachment.
+
+---
+
+## Auto-link detection
+
+When a BookStack URL is posted in an allowed channel, the bot automatically responds with an embed showing the page title and a link. No command needed.
 
 ---
 
@@ -65,7 +66,7 @@ Returns all shelves with their IDs.
 1. Go to https://discord.com/developers/applications → New Application
 2. Bot tab → Reset Token → copy the token
 3. OAuth2 → URL Generator → scopes: `bot` + `applications.commands`
-4. Bot permissions: `Send Messages`, `Embed Links`
+4. Bot permissions: `Send Messages`, `Embed Links`, `Read Message History`
 5. Open the generated URL and invite the bot to your server
 
 To find your Guild ID: Discord Settings → Advanced → Enable Developer Mode → right-click your server → Copy Server ID.
@@ -81,16 +82,16 @@ cp .env.example .env
 ```
 
 Fill in all values:
-
-```
 DISCORD_TOKEN=your-bot-token
 DISCORD_GUILD_ID=your-guild-id
 BOOKSTACK_URL=http://your-bookstack-host
 BOOKSTACK_TOKEN_ID=your-token-id
 BOOKSTACK_TOKEN_SECRET=your-token-secret
-```
+ALLOWED_CHANNEL_ID=123456789,987654321
 
 `DISCORD_GUILD_ID` scopes slash commands to one server and syncs them instantly. Leave it blank for global deployment — global sync takes up to an hour.
+
+`ALLOWED_CHANNEL_ID` is a comma-separated list of channel IDs where bot commands and auto-link detection are allowed.
 
 ---
 
@@ -137,8 +138,6 @@ kubectl logs -f deployment/bookstack-bot
 ---
 
 ## Project structure
-
-```
 bookstack-bot/
 ├── bot/
 │   ├── main.py                  # Entry point, slash command sync
@@ -154,7 +153,6 @@ bookstack-bot/
 ├── Dockerfile
 ├── docker-compose.yml
 └── requirements.txt
-```
 
 ---
 
