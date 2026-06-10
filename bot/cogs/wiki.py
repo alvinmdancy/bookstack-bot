@@ -36,6 +36,13 @@ class bookstack(commands.Cog):
         name="bookstack", description="Interact with BookStack"
     )
 
+    async def _defer(self, interaction: discord.Interaction) -> bool:
+        try:
+            await interaction.response.defer(ephemeral=True)
+            return True
+        except discord.errors.NotFound:
+            return False
+
     @bookstack.command(name="search", description="Search BookStack content")
     @app_commands.describe(query="What to search for")
     async def search(self, interaction: discord.Interaction, query: str):
@@ -46,18 +53,16 @@ class bookstack(commands.Cog):
                 delete_after=3,
             )
             return
-        try:
-            await interaction.response.defer()
-        except discord.errors.NotFound:
+        if not await self._defer(interaction):
             return
         try:
             results = await self.bs.search(query)
             await interaction.followup.send(embed=build_search_embed(results, query))
         except BookStackError as e:
-            await interaction.followup.send(f"BookStack error: {e}", ephemeral=True)
+            await interaction.followup.send(f"BookStack error: {e}")
         except Exception as e:
             log.exception("Unexpected error in /bookstack search")
-            await interaction.followup.send(f"Unexpected error: {e}", ephemeral=True)
+            await interaction.followup.send(f"Unexpected error: {e}")
 
     @bookstack.command(name="page", description="Get a page by ID")
     @app_commands.describe(page_id="Numeric page ID")
@@ -69,18 +74,16 @@ class bookstack(commands.Cog):
                 delete_after=3,
             )
             return
-        try:
-            await interaction.response.defer()
-        except discord.errors.NotFound:
+        if not await self._defer(interaction):
             return
         try:
             page = await self.bs.get_page(page_id)
             await interaction.followup.send(embed=build_page_embed(page))
         except BookStackError as e:
-            await interaction.followup.send(f"BookStack error: {e}", ephemeral=True)
+            await interaction.followup.send(f"BookStack error: {e}")
         except Exception as e:
             log.exception("Unexpected error in /bookstack page")
-            await interaction.followup.send(f"Unexpected error: {e}", ephemeral=True)
+            await interaction.followup.send(f"Unexpected error: {e}")
 
     @bookstack.command(name="create", description="Create a page stub in a book")
     @app_commands.describe(
@@ -102,18 +105,16 @@ class bookstack(commands.Cog):
                 delete_after=3,
             )
             return
-        try:
-            await interaction.response.defer()
-        except discord.errors.NotFound:
+        if not await self._defer(interaction):
             return
         try:
             page = await self.bs.create_page(book_id, title, content)
             await interaction.followup.send(embed=build_created_embed(page, book_id))
         except BookStackError as e:
-            await interaction.followup.send(f"BookStack error: {e}", ephemeral=True)
+            await interaction.followup.send(f"BookStack error: {e}")
         except Exception as e:
             log.exception("Unexpected error in /bookstack create")
-            await interaction.followup.send(f"Unexpected error: {e}", ephemeral=True)
+            await interaction.followup.send(f"Unexpected error: {e}")
 
     @bookstack.command(name="list", description="List books or shelves")
     @app_commands.describe(kind="What to list")
@@ -131,9 +132,7 @@ class bookstack(commands.Cog):
                 delete_after=3,
             )
             return
-        try:
-            await interaction.response.defer()
-        except discord.errors.NotFound:
+        if not await self._defer(interaction):
             return
         try:
             if kind == "shelves":
@@ -144,10 +143,10 @@ class bookstack(commands.Cog):
                 embed = build_books_embed(data)
             await interaction.followup.send(embed=embed)
         except BookStackError as e:
-            await interaction.followup.send(f"BookStack error: {e}", ephemeral=True)
+            await interaction.followup.send(f"BookStack error: {e}")
         except Exception as e:
             log.exception("Unexpected error in /bookstack list")
-            await interaction.followup.send(f"Unexpected error: {e}", ephemeral=True)
+            await interaction.followup.send(f"Unexpected error: {e}")
 
     @bookstack.command(name="export", description="Export a book as a PDF")
     async def export(self, interaction: discord.Interaction):
@@ -158,11 +157,12 @@ class bookstack(commands.Cog):
                 delete_after=3,
             )
             return
-        await interaction.response.defer(ephemeral=True)
+        if not await self._defer(interaction):
+            return
         try:
             shelves = await self.bs.list_shelves(count=25)
         except BookStackError as e:
-            await interaction.followup.send(f"BookStack error: {e}", ephemeral=True)
+            await interaction.followup.send(f"BookStack error: {e}")
             return
 
         options = [
@@ -170,7 +170,7 @@ class bookstack(commands.Cog):
             for s in shelves.get("data", [])
         ]
         if not options:
-            await interaction.followup.send("No shelves found.", ephemeral=True)
+            await interaction.followup.send("No shelves found.")
             return
 
         select = discord.ui.Select(placeholder="Pick a shelf...", options=options)
@@ -181,16 +181,12 @@ class bookstack(commands.Cog):
             try:
                 shelf = await self.bs.get_shelf(shelf_id)
             except BookStackError as e:
-                await shelf_interaction.followup.send(
-                    f"BookStack error: {e}", ephemeral=True
-                )
+                await shelf_interaction.followup.send(f"BookStack error: {e}")
                 return
 
             books = shelf.get("books", [])
             if not books:
-                await shelf_interaction.followup.send(
-                    "No books on that shelf.", ephemeral=True
-                )
+                await shelf_interaction.followup.send("No books on that shelf.")
                 return
 
             book_options = [
@@ -209,28 +205,26 @@ class bookstack(commands.Cog):
                 try:
                     pdf_bytes = await self.bs.export_book_pdf(book_id)
                 except BookStackError as e:
-                    await book_interaction.followup.send(
-                        f"BookStack error: {e}", ephemeral=True
-                    )
+                    await book_interaction.followup.send(f"BookStack error: {e}")
                     return
                 file = discord.File(
                     io.BytesIO(pdf_bytes), filename=f"{book_name}.pdf"
                 )
                 await book_interaction.followup.send(
-                    f"Here's **{book_name}**:", file=file, ephemeral=True
+                    f"Here's **{book_name}**:", file=file
                 )
 
             book_select.callback = book_callback
             book_view = discord.ui.View(timeout=60)
             book_view.add_item(book_select)
             await shelf_interaction.followup.send(
-                "Pick a book:", view=book_view, ephemeral=True
+                "Pick a book:", view=book_view
             )
 
         select.callback = shelf_callback
         view = discord.ui.View(timeout=60)
         view.add_item(select)
-        await interaction.followup.send("Pick a shelf:", view=view, ephemeral=True)
+        await interaction.followup.send("Pick a shelf:", view=view)
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
