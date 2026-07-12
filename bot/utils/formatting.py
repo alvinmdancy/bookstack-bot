@@ -12,7 +12,7 @@ def strip_html(text: str) -> str:
 def truncate(text: str, max_len: int = 300) -> str:
     if len(text) <= max_len:
         return text
-    return text[:max_len - 1] + "…"
+    return text[: max_len - 1] + "…"
 
 
 def build_search_embed(results: dict, query: str) -> discord.Embed:
@@ -42,7 +42,9 @@ def build_page_embed(page: dict) -> discord.Embed:
         url=page.get("url", ""),
         color=discord.Color.green(),
     )
-    embed.description = truncate(strip_html(page.get("html", "")), 800) or "_No content._"
+    embed.description = (
+        truncate(strip_html(page.get("html", "")), 800) or "_No content._"
+    )
     embed.add_field(name="Page ID", value=str(page.get("id", "—")), inline=True)
     embed.add_field(name="Book", value=page.get("book_slug", "—"), inline=True)
     embed.set_footer(text=f"Updated: {page.get('updated_at', 'unknown')}")

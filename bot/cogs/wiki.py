@@ -1,20 +1,13 @@
 import io
 import logging
 import os
-import re
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
 from bot.bookstack.client import BookStackClient, BookStackError
-from bot.utils.formatting import (
-    build_books_embed,
-    build_created_embed,
-    build_page_embed,
-    build_search_embed,
-    build_shelves_embed,
-)
+from bot.bookstack.gotenberg_export import export_book_to_pdf, GotenbergExportError
 
 log = logging.getLogger("bookstack-bot.bookstack")
 
@@ -22,241 +15,229 @@ ALLOWED_CHANNEL_ID = [
     int(cid.strip()) for cid in os.getenv("ALLOWED_CHANNEL_ID", "0").split(",")
 ]
 
+# Used to build "Open in Browser" links. Adjust the env var name here if your
+# .env uses something other than BOOKSTACK_URL (check bot/bookstack/client.py).
+BOOKSTACK_URL = os.getenv("BOOKSTACK_URL", "").rstrip("/")
+
 
 def in_allowed_channel(interaction: discord.Interaction) -> bool:
     return ALLOWED_CHANNEL_ID == [0] or interaction.channel_id in ALLOWED_CHANNEL_ID
 
 
+# =========================================================
+# COG
+# =========================================================
 class bookstack(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.bs = BookStackClient()
 
-    bookstack = app_commands.Group(
-        name="bookstack", description="Interact with BookStack"
-    )
+        # lightweight per-user session store
+        self.sessions = {}
 
-    async def _defer(self, interaction: discord.Interaction) -> bool:
+    def get_session(self, user_id: int):
+        if user_id not in self.sessions:
+            self.sessions[user_id] = {
+                "shelf_id": None,
+                "book_id": None,
+            }
+        return self.sessions[user_id]
+
+    # =========================================================
+    # ENTRY COMMAND (ONLY COMMAND YOU NEED)
+    # =========================================================
+    @app_commands.command(name="bookstack", description="Open BookStack UI")
+    async def bookstack_menu(self, interaction: discord.Interaction):
+        if not in_allowed_channel(interaction):
+            await interaction.response.send_message(
+                "Not allowed in this channel.",
+                ephemeral=True,
+                delete_after=3,
+            )
+            return
+
         try:
             await interaction.response.defer(ephemeral=True)
-            return True
-        except discord.errors.NotFound:
-            return False
-
-    @bookstack.command(name="search", description="Search BookStack content")
-    @app_commands.describe(query="What to search for")
-    async def search(self, interaction: discord.Interaction, query: str):
-        if not in_allowed_channel(interaction):
-            await interaction.response.send_message(
-                "Bookstack commands only work in <#1512685812288978945>.",
-                ephemeral=True,
-                delete_after=3,
-            )
-            return
-        if not await self._defer(interaction):
-            return
-        try:
-            results = await self.bs.search(query)
-            await interaction.followup.send(embed=build_search_embed(results, query))
-        except BookStackError as e:
-            await interaction.followup.send(f"BookStack error: {e}")
-        except Exception as e:
-            log.exception("Unexpected error in /bookstack search")
-            await interaction.followup.send(f"Unexpected error: {e}")
-
-    @bookstack.command(name="page", description="Get a page by ID")
-    @app_commands.describe(page_id="Numeric page ID")
-    async def page(self, interaction: discord.Interaction, page_id: int):
-        if not in_allowed_channel(interaction):
-            await interaction.response.send_message(
-                "Bookstack commands only work in <#1512685812288978945>.",
-                ephemeral=True,
-                delete_after=3,
-            )
-            return
-        if not await self._defer(interaction):
-            return
-        try:
-            page = await self.bs.get_page(page_id)
-            await interaction.followup.send(embed=build_page_embed(page))
-        except BookStackError as e:
-            await interaction.followup.send(f"BookStack error: {e}")
-        except Exception as e:
-            log.exception("Unexpected error in /bookstack page")
-            await interaction.followup.send(f"Unexpected error: {e}")
-
-    @bookstack.command(name="create", description="Create a page stub in a book")
-    @app_commands.describe(
-        book_id="Book ID to add the page to",
-        title="Page title",
-        content="Optional markdown content",
-    )
-    async def create(
-        self,
-        interaction: discord.Interaction,
-        book_id: int,
-        title: str,
-        content: str = "",
-    ):
-        if not in_allowed_channel(interaction):
-            await interaction.response.send_message(
-                "Bookstack commands only work in <#1512685812288978945>.",
-                ephemeral=True,
-                delete_after=3,
-            )
-            return
-        if not await self._defer(interaction):
-            return
-        try:
-            page = await self.bs.create_page(book_id, title, content)
-            await interaction.followup.send(embed=build_created_embed(page, book_id))
-        except BookStackError as e:
-            await interaction.followup.send(f"BookStack error: {e}")
-        except Exception as e:
-            log.exception("Unexpected error in /bookstack create")
-            await interaction.followup.send(f"Unexpected error: {e}")
-
-    @bookstack.command(name="list", description="List books or shelves")
-    @app_commands.describe(kind="What to list")
-    @app_commands.choices(
-        kind=[
-            app_commands.Choice(name="books", value="books"),
-            app_commands.Choice(name="shelves", value="shelves"),
-        ]
-    )
-    async def list_items(self, interaction: discord.Interaction, kind: str = "books"):
-        if not in_allowed_channel(interaction):
-            await interaction.response.send_message(
-                "Bookstack commands only work in <#1512685812288978945>.",
-                ephemeral=True,
-                delete_after=3,
-            )
-            return
-        if not await self._defer(interaction):
-            return
-        try:
-            if kind == "shelves":
-                data = await self.bs.list_shelves()
-                embed = build_shelves_embed(data)
-            else:
-                data = await self.bs.list_books()
-                embed = build_books_embed(data)
-            await interaction.followup.send(embed=embed)
-        except BookStackError as e:
-            await interaction.followup.send(f"BookStack error: {e}")
-        except Exception as e:
-            log.exception("Unexpected error in /bookstack list")
-            await interaction.followup.send(f"Unexpected error: {e}")
-
-    @bookstack.command(name="export", description="Export a book as a PDF")
-    async def export(self, interaction: discord.Interaction):
-        if not in_allowed_channel(interaction):
-            await interaction.response.send_message(
-                "Bookstack commands only work in <#1512685812288978945>.",
-                ephemeral=True,
-                delete_after=3,
-            )
-            return
-        if not await self._defer(interaction):
-            return
-        try:
             shelves = await self.bs.list_shelves(count=25)
         except BookStackError as e:
-            await interaction.followup.send(f"BookStack error: {e}")
+            await interaction.followup.send(f"BookStack error: {e}", ephemeral=True)
             return
+
+        await interaction.followup.send(
+            "📚 BookStack Menu",
+            view=MainMenuView(self, shelves),
+            ephemeral=True,
+        )
+
+
+# =========================================================
+# MAIN MENU
+# =========================================================
+class MainMenuView(discord.ui.View):
+    def __init__(self, cog, shelves):
+        super().__init__(timeout=120)
+        self.cog = cog
+        self.shelves = shelves
+
+    @discord.ui.button(label="Browse Shelves", style=discord.ButtonStyle.primary)
+    async def browse(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(
+            content="Select a shelf:",
+            view=ShelfView(self.cog, self.shelves),
+        )
+
+    @discord.ui.button(label="Search (basic)", style=discord.ButtonStyle.secondary)
+    async def search(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message(
+            "Use `/bookstack search <query>` for now.",
+            ephemeral=True,
+        )
+
+    @discord.ui.button(label="Close", style=discord.ButtonStyle.danger)
+    async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(
+            content="Closed.",
+            view=None,
+        )
+
+
+# =========================================================
+# SHELF VIEW
+# =========================================================
+class ShelfView(discord.ui.View):
+    def __init__(self, cog, shelves):
+        super().__init__(timeout=120)
+        self.cog = cog
 
         options = [
             discord.SelectOption(label=s["name"], value=str(s["id"]))
             for s in shelves.get("data", [])
         ]
-        if not options:
-            await interaction.followup.send("No shelves found.")
+
+        self.select = discord.ui.Select(
+            placeholder="Choose a shelf...",
+            options=options,
+        )
+        self.select.callback = self.on_select
+        self.add_item(self.select)
+
+    async def on_select(self, interaction: discord.Interaction):
+        shelf_id = int(self.select.values[0])
+
+        session = self.cog.get_session(interaction.user.id)
+        session["shelf_id"] = shelf_id
+
+        await interaction.response.defer()
+
+        try:
+            shelf = await self.cog.bs.get_shelf(shelf_id)
+        except BookStackError as e:
+            await interaction.followup.send(f"Error: {e}", ephemeral=True)
             return
 
-        select = discord.ui.Select(placeholder="Pick a shelf...", options=options)
+        books = shelf.get("books", [])
 
-        async def shelf_callback(shelf_interaction: discord.Interaction):
-            shelf_id = int(select.values[0])
-            await shelf_interaction.response.defer(ephemeral=True)
-            try:
-                shelf = await self.bs.get_shelf(shelf_id)
-            except BookStackError as e:
-                await shelf_interaction.followup.send(f"BookStack error: {e}")
-                return
+        if not books:
+            await interaction.followup.send(
+                "No books found.",
+                ephemeral=True,
+            )
+            return
 
-            books = shelf.get("books", [])
-            if not books:
-                await shelf_interaction.followup.send("No books on that shelf.")
-                return
+        await interaction.edit_original_response(
+            content="Select a book:",
+            view=BookView(self.cog, books),
+        )
 
-            book_options = [
-                discord.SelectOption(label=b["name"], value=str(b["id"]))
-                for b in books
-            ]
-            book_select = discord.ui.Select(
-                placeholder="Pick a book...", options=book_options
+
+# =========================================================
+# BOOK VIEW
+# =========================================================
+class BookView(discord.ui.View):
+    def __init__(self, cog, books):
+        super().__init__(timeout=120)
+        self.cog = cog
+        self.books = books
+
+        options = [
+            discord.SelectOption(label=b["name"], value=str(b["id"])) for b in books
+        ]
+
+        self.select = discord.ui.Select(
+            placeholder="Choose a book...",
+            options=options,
+        )
+        self.select.callback = self.on_select
+        self.add_item(self.select)
+
+    async def on_select(self, interaction: discord.Interaction):
+        book_id = int(self.select.values[0])
+
+        session = self.cog.get_session(interaction.user.id)
+        session["book_id"] = book_id
+
+        book = next((b for b in self.books if str(b["id"]) == str(book_id)), None)
+        book_name = book.get("name", "Book") if book else "Book"
+        book_slug = book.get("slug") if book else None
+
+        await interaction.response.edit_message(
+            content=f"📘 {book_name}",
+            view=BookActionView(self.cog, book_id, book_slug),
+        )
+
+
+# =========================================================
+# BOOK ACTIONS: EXPORT + OPEN IN BROWSER
+# =========================================================
+class BookActionView(discord.ui.View):
+    def __init__(self, cog, book_id, book_slug=None):
+        super().__init__(timeout=120)
+        self.cog = cog
+        self.book_id = book_id
+        self.book_slug = book_slug
+
+        if book_slug and BOOKSTACK_URL:
+            url = f"{BOOKSTACK_URL}/books/{book_slug}"
+            self.add_item(
+                discord.ui.Button(
+                    label="Open in Browser",
+                    style=discord.ButtonStyle.link,
+                    url=url,
+                )
+            )
+        elif not BOOKSTACK_URL:
+            log.warning(
+                "BOOKSTACK_URL is not set, skipping 'Open in Browser' button. "
+                "Set it in .env to enable this."
             )
 
-            async def book_callback(book_interaction: discord.Interaction):
-                book_id = int(book_select.values[0])
-                book_name = next(b["name"] for b in books if b["id"] == book_id)
-                log.info(f"Exporting book {book_id} ({book_name})")
-                await book_interaction.response.defer(ephemeral=True)
-                try:
-                    pdf_bytes = await self.bs.export_book_pdf(book_id)
-                except BookStackError as e:
-                    await book_interaction.followup.send(f"BookStack error: {e}")
-                    return
-                file = discord.File(
-                    io.BytesIO(pdf_bytes), filename=f"{book_name}.pdf"
-                )
-                await book_interaction.followup.send(
-                    f"Here's **{book_name}**:", file=file
-                )
+    @discord.ui.button(label="Export PDF", style=discord.ButtonStyle.success)
+    async def export(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
 
-            book_select.callback = book_callback
-            book_view = discord.ui.View(timeout=60)
-            book_view.add_item(book_select)
-            await shelf_interaction.followup.send(
-                "Pick a book:", view=book_view
-            )
-
-        select.callback = shelf_callback
-        view = discord.ui.View(timeout=60)
-        view.add_item(select)
-        await interaction.followup.send("Pick a shelf:", view=view)
-
-    @commands.Cog.listener()
-    async def on_message(self, message: discord.Message):
-        if message.author.bot:
-            return
-        if message.channel.id not in ALLOWED_CHANNEL_ID:
-            return
-
-        base = os.getenv("BOOKSTACK_URL", "").rstrip("/")
-        if not base or base not in message.content:
-            return
-
-        pattern = rf"{re.escape(base)}/books/([^/\s]+)(?:/page/([^/\s]+))?"
-        matches = re.findall(pattern, message.content)
-        if not matches:
+        try:
+            book = await self.cog.bs.get_book(self.book_id)
+        except BookStackError as e:
+            await interaction.followup.send(f"Error fetching book: {e}", ephemeral=True)
             return
 
         try:
-            results = await self.bs.search(matches[0][1] or matches[0][0], count=1)
-            pages = results.get("data", [])
-            if not pages:
-                return
-            page = pages[0]
-            embed = discord.Embed(
-                title=page.get("name", "BookStack Page"),
-                url=page.get("url", base),
-                color=discord.Color.blue(),
-            )
-            await message.channel.send(embed=embed)
-        except BookStackError:
-            pass
+            pdf_bytes = await export_book_to_pdf(book)
+        except GotenbergExportError as e:
+            await interaction.followup.send(f"Export failed: {e}", ephemeral=True)
+            return
+
+        file = discord.File(io.BytesIO(pdf_bytes), filename="book.pdf")
+
+        await interaction.followup.send(
+            "📦 Export complete (with diagrams):",
+            file=file,
+            ephemeral=True,
+        )
 
 
+# =========================================================
+# REQUIRED SETUP
+# =========================================================
 async def setup(bot: commands.Bot):
     await bot.add_cog(bookstack(bot))

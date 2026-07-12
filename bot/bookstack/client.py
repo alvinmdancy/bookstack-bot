@@ -5,6 +5,7 @@ import httpx
 
 class BookStackError(Exception):
     """Raised when BookStack returns a non-2xx response."""
+
     pass
 
 
@@ -34,9 +35,7 @@ class BookStackClient:
                 params=params or {},
             )
             if r.status_code >= 400:
-                raise BookStackError(
-                    f"BookStack returned {r.status_code}: {r.text}"
-                )
+                raise BookStackError(f"BookStack returned {r.status_code}: {r.text}")
             return r.json()
 
     async def _post(self, path: str, body: dict) -> dict:
@@ -47,9 +46,7 @@ class BookStackClient:
                 json=body,
             )
             if r.status_code >= 400:
-                raise BookStackError(
-                    f"BookStack returned {r.status_code}: {r.text}"
-                )
+                raise BookStackError(f"BookStack returned {r.status_code}: {r.text}")
             return r.json()
 
     async def search(self, query: str, count: int = 5) -> dict:
@@ -73,9 +70,12 @@ class BookStackClient:
                 "markdown": markdown or f"# {title}\n\n_Stub created via Discord._",
             },
         )
-    
+
     async def get_shelf(self, shelf_id: int) -> dict:
         return await self._get(f"/shelves/{shelf_id}")
+
+    async def get_book(self, book_id: int) -> dict:
+        return await self._get(f"/books/{book_id}")
 
     async def export_book_pdf(self, book_id: int) -> bytes:
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -84,7 +84,5 @@ class BookStackClient:
                 headers=self._headers,
             )
             if r.status_code >= 400:
-                raise BookStackError(
-                    f"BookStack returned {r.status_code}: {r.text}"
-                )
+                raise BookStackError(f"BookStack returned {r.status_code}: {r.text}")
             return r.content
